@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>首都圏で伊豆を味わうマップ｜神奈川・東京・埼玉</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+:root{
+  --ink:#1f2937; --sub:#6b7280; --bg:#f7f5f0; --card:#ffffff; --line:#e5e1d8;
+  --sea:#155e75; --kinme:#c2410c; --himono:#a16207; --wasabi:#4d7c0f;
+  --island:#0e7490; --shop:#7c3aed; --hist:#9f1239; --other:#475569;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic UI","Noto Sans JP",Meiryo,sans-serif;color:var(--ink);background:var(--bg);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+header{background:linear-gradient(135deg,#0f3d4f 0%,#155e75 60%,#1b7a94 100%);color:#fff;padding:14px 20px 12px;flex-shrink:0}
+header h1{font-size:19px;font-weight:700;letter-spacing:.02em}
+header p{font-size:12px;opacity:.85;margin-top:3px}
+#layout{display:flex;flex:1;min-height:0}
+#sidebar{width:340px;flex-shrink:0;background:var(--card);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+#filters{padding:12px 14px;border-bottom:1px solid var(--line);background:#fbfaf7}
+.flabel{font-size:11px;font-weight:700;color:var(--sub);margin:6px 0 4px;letter-spacing:.05em}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;user-select:none;transition:all .12s;color:var(--ink)}
+.chip:hover{border-color:#94a3b8}
+.chip.on{color:#fff;border-color:transparent}
+.chip .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+#count{font-size:11px;color:var(--sub);margin-top:8px}
+#list{flex:1;overflow-y:auto;padding:8px}
+.item{background:#fff;border:1px solid var(--line);border-left:4px solid var(--sub);border-radius:8px;padding:9px 11px;margin-bottom:7px;cursor:pointer;transition:box-shadow .12s}
+.item:hover{box-shadow:0 2px 8px rgba(0,0,0,.10)}
+.item h3{font-size:13px;font-weight:700;line-height:1.35}
+.item .meta{font-size:11px;color:var(--sub);margin-top:3px}
+.badge{display:inline-block;font-size:10px;font-weight:700;color:#fff;border-radius:4px;padding:1px 6px;margin-right:4px;vertical-align:1px}
+#map{flex:1;min-width:0}
+.leaflet-popup-content{font-family:inherit;font-size:12.5px;line-height:1.55;margin:12px 14px;max-width:260px}
+.pop h3{font-size:14px;margin-bottom:4px;line-height:1.35}
+.pop .desc{margin:6px 0}
+.pop .adr{color:var(--sub);font-size:11.5px}
+.pop .links{margin-top:7px;display:flex;gap:10px}
+.pop a{color:var(--sea);font-weight:700;text-decoration:none;font-size:12px}
+.pop a:hover{text-decoration:underline}
+#note{font-size:10.5px;color:var(--sub);padding:7px 14px;border-top:1px solid var(--line);background:#fbfaf7;flex-shrink:0}
+.marker-pin{border-radius:50% 50% 50% 0;transform:rotate(-45deg);width:22px;height:22px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.marker-pin span{transform:rotate(45deg);display:block;color:#fff;font-size:11px;text-align:center;line-height:18px;font-weight:700}
+#tilewarn{display:none;position:absolute;top:10px;right:10px;z-index:1000;background:#fff8e1;border:1px solid #f0d060;border-radius:6px;padding:6px 10px;font-size:11px;max-width:220px}
+@media (max-width:760px){
+  #layout{flex-direction:column}
+  #sidebar{width:100%;height:45%;border-right:none;border-top:1px solid var(--line);order:2}
+  #map{height:55%;order:1}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>首都圏で伊豆を味わうマップ</h1>
+  <p>神奈川・東京・埼玉で伊豆半島の料理が食べられる店＆伊豆ゆかりのスポット（2026年8月調べ）</p>
+</header>
+<div id="layout">
+  <div id="sidebar">
+    <div id="filters">
+      <div class="flabel">都県</div>
+      <div class="chips" id="prefChips"></div>
+      <div class="flabel">カテゴリ</div>
+      <div class="chips" id="catChips"></div>
+      <div id="count"></div>
+    </div>
+    <div id="list"></div>
+    <div id="note">※ 掲載情報は2026年8月時点。営業時間・メニューは変わることがあるので来訪前にご確認を。ピン位置は住所からの近似です。</div>
+  </div>
+  <div id="map" style="position:relative"><div id="tilewarn">地図タイルを読み込めない環境のようです。ピンとリストはそのまま使えます。</div></div>
+</div>
+<script>
+const SPOTS = [
+// ===== 東京都: 伊豆料理の飲食店 =====
+{name:"伊豆の旬 やんも 南青山店",cat:"金目鯛・地魚",pref:"東京都",addr:"港区南青山5-5-25 南青山郵船ビル B1F",sta:"表参道駅",lat:35.6636,lng:139.7133,desc:"店名は伊豆に自生するヤマモモ「やんも」から。伊豆直送の地魚の炭火焼きや金目鯛の煮付けなど「伊豆の旬」を掲げる和食の名店。",url:"https://tabelog.com/tokyo/A1306/A130602/13004684/",type:"food"},
+{name:"伊豆の旬 やんも 丸の内店",cat:"金目鯛・地魚",pref:"東京都",addr:"千代田区丸の内3-3-1 新東京ビル B1F",sta:"二重橋前駅・東京駅",lat:35.6768,lng:139.7625,desc:"南青山店と同系列の伊豆料理店。毎日直送される伊豆の旬魚を使った焼き魚ランチや金目鯛料理で知られる。",url:"https://tabelog.com/tokyo/A1301/A130102/13004075/",type:"food"},
+{name:"潮彩",cat:"金目鯛・地魚",pref:"東京都",addr:"練馬区練馬1-22-12",sta:"練馬駅",lat:35.7365,lng:139.6555,desc:"南伊豆町・子浦港の漁船「青龍丸」直営の海鮮居酒屋。南伊豆の漁師オーナーが一本釣りした魚を直送で提供。",url:"https://tabelog.com/tokyo/A1321/A132102/13117822/",type:"food"},
+{name:"城ヶ崎 おかもと",cat:"金目鯛・地魚",pref:"東京都",addr:"渋谷区恵比寿2-9-1 EBIS FLAT 1B",sta:"恵比寿駅・広尾駅",lat:35.6478,lng:139.7175,desc:"伊豆・城ヶ崎の名を冠した伊豆料理居酒屋。金目鯛のしゃぶしゃぶ・金目鯛おでん、伊豆牛の焼きしゃぶが看板。",url:"https://www.hotpepper.jp/strJ001013001/",type:"food"},
+{name:"酒ト壽",cat:"金目鯛・地魚",pref:"東京都",addr:"新宿区神楽坂4-2",sta:"牛込神楽坂駅・飯田橋駅",lat:35.7020,lng:139.7395,desc:"神楽坂の路地裏の古民家風魚料理居酒屋。下田直送の金目鯛にこだわり、煮付けなどで提供する。",url:"https://r.gnavi.co.jp/6cuyme0b0000/",type:"food"},
+{name:"ナカメオンザビーチ",cat:"金目鯛・地魚",pref:"東京都",addr:"目黒区上目黒2-16-12 フレンドビル中目黒101",sta:"中目黒駅",lat:35.6435,lng:139.6990,desc:"「伊豆下田の海・里・山の恵み」がコンセプトの居酒屋。下田直送の金目鯛や静岡おでんなど伊豆の食材を使った料理を提供。",url:"https://tabelog.com/tokyo/A1317/A131701/13289732/",type:"food"},
+{name:"香鱗水産",cat:"金目鯛・地魚",pref:"東京都",addr:"豊島区西巣鴨2-36",sta:"新庚申塚駅・西巣鴨駅",lat:35.7433,lng:139.7280,desc:"伊豆半島の魚専門の海鮮食堂・居酒屋。初島のマダイや網代の定置網の魚など伊豆直送の地魚が日替わりで登場。昼は刺身定食、夜は日本酒と。",url:"https://tabelog.com/tokyo/A1322/A132201/13270534/",type:"food"},
+{name:"静岡おでんと伊豆の味 そうだら 上野御徒町本店",cat:"干物・郷土料理",pref:"東京都",addr:"台東区上野6-6-4 DUKEビル 2F",sta:"御徒町駅・上野駅",lat:35.7085,lng:139.7745,desc:"伊東出身オーナーの伊豆・静岡郷土料理店。伊東直送の干物、河津「わさび園かどや」公認わさび丼、伊豆鹿・伊豆牛など伊豆づくし。",url:"https://izunoaji-soudara.jp/",type:"food"},
+{name:"沼津港 海将 zero 上野店",cat:"その他",pref:"東京都",addr:"台東区上野6-9-13 1F",sta:"御徒町駅・上野駅",lat:35.7092,lng:139.7736,desc:"伊豆半島西の玄関口・沼津港(戸田・西伊豆方面の魚が集まる駿河湾の港)から自社便で毎日直送する鮮魚が売りの海鮮居酒屋。",url:"https://gdcm102.gorp.jp/",type:"food"},
+{name:"青ヶ島屋",cat:"伊豆諸島(参考)",pref:"東京都",addr:"新宿区西新宿7-15-15 東宝観光ビル2F",sta:"西武新宿駅・新宿西口駅",lat:35.6960,lng:139.6980,desc:"日本一小さな村・青ヶ島の郷土料理店。島寿司、明日葉の天ぷら、ウミガメの刺身など伊豆諸島の珍しい料理と島焼酎が揃う。",url:"https://tabelog.com/tokyo/A1304/A130401/13184156/",type:"food"},
+{name:"居酒屋 八丈島",cat:"伊豆諸島(参考)",pref:"東京都",addr:"豊島区西池袋1-22-4",sta:"池袋駅",lat:35.7305,lng:139.7085,desc:"八丈島の郷土料理専門の老舗居酒屋。島寿司、くさや、明日葉天ぷらなど伊豆諸島の料理と島焼酎が揃う。",url:"https://hachijoujima.owst.jp/",type:"food"},
+{name:"むぎとろと東京諸島の創作料理 天空",cat:"伊豆諸島(参考)",pref:"東京都",addr:"台東区寿4-14-10",sta:"田原町駅・浅草駅",lat:35.7098,lng:139.7906,desc:"麦とろと東京諸島(伊豆諸島・小笠原)の食材を使う創作料理店。島の魚や明日葉と島酒を提供、都の特産食材使用店に認定。",url:"https://tenku.tokyo/",type:"food"},
+{name:"炭火焼き離島酒場 ウタとルリ",cat:"伊豆諸島(参考)",pref:"東京都",addr:"世田谷区太子堂1-12-25 サンティビル B1",sta:"三軒茶屋駅",lat:35.6437,lng:139.6699,desc:"全国の離島食材を扱う炭火焼き酒場。青ヶ島牛の炭火焼きや伊豆諸島の島酒など島しょ食材が看板。",url:"https://www.tokyoislands-net.jp/shop/experience/",type:"food"},
+{name:"SUD Restaurant / TERAKOYA",cat:"伊豆諸島(参考)",pref:"東京都",addr:"港区海岸1-10-30 アトレ竹芝 タワー棟2F",sta:"竹芝駅・浜松町駅",lat:35.6533,lng:139.7623,desc:"竹芝のフレンチ。伊豆諸島など東京の島しょ食材を活かした料理を提供する島体験認定店。",url:"https://sud-terakoya.jp/",type:"food"},
+// ===== 神奈川県: 飲食店 =====
+{name:"活魚回転寿司 網元 伊豆",cat:"金目鯛・地魚",pref:"神奈川県",addr:"横浜市西区南幸1-9-4",sta:"横浜駅",lat:35.4660,lng:139.6197,desc:"店主の実家が伊豆で営む網元から直送される活魚・地魚が売りの回転寿司。横浜駅徒歩2分で伊豆の魚を握りで。",url:"https://www.hotpepper.jp/strJ000246853/",type:"food"},
+{name:"四季の肴 伊豆の隠れ家 えのもと",cat:"金目鯛・地魚",pref:"神奈川県",addr:"横浜市中区相生町4-69-4 関内大通りビル2F",sta:"関内駅",lat:35.4460,lng:139.6365,desc:"伊豆下田出身の店主が毎日伊豆から産地直送で仕入れる居酒屋。金目鯛の姿焼きやサザエのつぼ焼きなど伊豆の海の幸が名物。",url:"https://www.hotpepper.jp/strJ001216197/",type:"food"},
+{name:"伊豆近海 相模湾の魚貝料理 海湘丸 厚木本店",cat:"金目鯛・地魚",pref:"神奈川県",addr:"厚木市長谷776-3",sta:"愛甲石田駅",lat:35.4180,lng:139.3480,desc:"伊豆近海・相模湾の魚貝料理を掲げる海鮮店。最高級ブランド「下田の日戻り地金目鯛」のしゃぶしゃぶが看板。",url:"https://www.hotpepper.jp/strJ001050475/",type:"food"},
+{name:"伊豆の回転寿司 花まる銀彩 湯河原店",cat:"金目鯛・地魚",pref:"神奈川県",addr:"足柄下郡湯河原町中央1-1572-62",sta:"湯河原駅",lat:35.1465,lng:139.1110,desc:"伊東・伊豆高原発祥「伊豆の回転寿司」の神奈川店舗。伊豆近海の地魚と本マグロを回転寿司で。",url:"https://izu-hanamaru.com/information/",type:"food"},
+{name:"福浦漁港 みなと食堂",cat:"金目鯛・地魚",pref:"神奈川県",addr:"足柄下郡湯河原町福浦109-2",sta:"真鶴駅",lat:35.1546,lng:139.1330,desc:"福浦漁協直営の海鮮食堂。朝どれ地魚の刺身定食に加え、伊豆・稲取産金目鯛の丸ごと一匹煮付けを提供。",url:"https://3710shokudou.com/",type:"food"},
+{name:"入船 小田原駅前店",cat:"金目鯛・地魚",pref:"神奈川県",addr:"小田原市栄町2-1-29",sta:"小田原駅",lat:35.2565,lng:139.1585,desc:"小田原と伊豆・伊東に展開する海鮮・寿司グループの小田原店。漁師直送の伊豆の地魚や金目鯛、伊豆牛を扱う。",url:"https://irifune-group.com/",type:"food"},
+{name:"おでん旬彩 野毛八",cat:"金目鯛・地魚",pref:"神奈川県",addr:"横浜市中区宮川町2-35",sta:"日ノ出町駅・桜木町駅",lat:35.4448,lng:139.6288,desc:"おでんと市場直送の旬魚が売りの野毛の居酒屋。伊豆稲取の釣り金目鯛が入荷し、煮付けなどで提供される。",url:"https://tabelog.com/keywords/%E7%A8%B2%E5%8F%96/kanagawa/kwdLst/",type:"food"},
+{name:"SALONE 2007",cat:"その他",pref:"神奈川県",addr:"横浜市中区山下町36-1 B1F",sta:"元町・中華街駅",lat:35.4438,lng:139.6510,desc:"横浜を代表するイタリアン。伊豆下田産金目鯛を使った皿がコースの定番食材として登場する。",url:"https://tabelog.com/kanagawa/A1401/A140104/14000159/",type:"food"},
+{name:"フィエルテ(Fierté)",cat:"その他",pref:"神奈川県",addr:"鎌倉市御成町2-14-2 Ever Village(B) 2F",sta:"鎌倉駅",lat:35.3175,lng:139.5495,desc:"鎌倉のフレンチ。伊豆下田産金目鯛を約14日熟成させた魚料理がスペシャリテとしてコースに登場。",url:"https://tabelog.com/kanagawa/A1404/A140402/14071899/",type:"food"},
+// ===== 埼玉県: 飲食店 =====
+{name:"オルタナ(ALTERNA)",cat:"干物・郷土料理",pref:"埼玉県",addr:"志木市本町5-24-17 アルバビル5F",sta:"志木駅",lat:35.8345,lng:139.5830,desc:"西伊豆の生産者から直接仕入れるレストラン。西伊豆の干物、郷土食材の塩鰹、天城のジビエ、本わさびを石窯料理で。",url:"https://www.hotpepper.jp/strJ003559858/",type:"food"},
+{name:"個室 わさび居酒屋 あな蔵 浦和店",cat:"わさび",pref:"埼玉県",addr:"さいたま市浦和区仲町2-3-5",sta:"浦和駅",lat:35.8590,lng:139.6540,desc:"伊豆天城産の本わさびを使った料理が売りの「わさび居酒屋」。すりたての伊豆わさびを刺身や名物料理と。",url:"https://anagura.owst.jp/",type:"food"},
+{name:"アカマル屋鮮魚店 大宮すずらん通り店",cat:"金目鯛・地魚",pref:"埼玉県",addr:"さいたま市大宮区大門町1-20-3 角井ビル1F",sta:"大宮駅",lat:35.9060,lng:139.6260,desc:"下田や沼津など伊豆方面の港から毎日届く朝獲れ鮮魚が売りの海鮮居酒屋。「アカマル鮮魚盛り」が名物。",url:"https://gj8m200.gorp.jp/",type:"food"},
+{name:"ととや",cat:"金目鯛・地魚",pref:"埼玉県",addr:"さいたま市浦和区仲町1-8-5",sta:"浦和駅",lat:35.8598,lng:139.6553,desc:"店主が自ら市場で仕入れる浦和の魚料理と地酒の店。伊豆・稲取産金目鯛の刺身など伊豆の魚が品書きに登場。",url:"https://tabelog.com/saitama/A1101/A110102/11000459/",type:"food"},
+{name:"鉄板ビストロ La planche(ラ・プランシュ)",cat:"その他",pref:"埼玉県",addr:"越谷市千間台東1-8-8-101",sta:"せんげん台駅",lat:35.9275,lng:139.7915,desc:"せんげん台の鉄板ビストロ。店主が伊豆下田から仕入れる金目鯛を使った料理を提供する。",url:"https://tabelog.com/saitama/A1102/A110203/11048477/",type:"food"},
+// ===== 伊豆に関するスポット =====
+{name:"東京愛らんど",cat:"アンテナショップ・物販",pref:"東京都",addr:"港区海岸1-12-2 竹芝客船ターミナル内",sta:"竹芝駅・浜松町駅",lat:35.6547,lng:139.7607,desc:"伊豆諸島・小笠原諸島のアンテナショップ(東京都島しょ振興公社運営)。くさや、明日葉、椿油、島焼酎など島の特産品を常設販売。",url:"https://www.tokyoislands-net.jp/shop/store/",type:"spot"},
+{name:"静岡県産品アンテナコーナー「おいしず」",cat:"アンテナショップ・物販",pref:"東京都",addr:"千代田区神田練塀町8-2 CHABARA 日本百貨店しょくひんかん内",sta:"秋葉原駅",lat:35.7003,lng:139.7723,desc:"静岡県公式の県産品コーナー。わさび加工品やお茶など、伊豆を含む静岡の特産品・旬の加工品を販売。",url:"https://fujinokuni.shokunomiyako-shizuoka.pref.shizuoka.jp/culture/article/2504",type:"spot"},
+{name:"ペリー記念館・ペリー公園",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"横須賀市久里浜7-14",sta:"京急久里浜駅",lat:35.2266,lng:139.7160,desc:"1853年ペリー艦隊上陸の地。ペリー来航に始まる日米和親条約で伊豆・下田が開港しており、下田開国史とつながる史跡。入館無料。",url:"https://www.city.yokosuka.kanagawa.jp/5560/sisetu/fc00000442.html",type:"spot"},
+{name:"台場公園(第三台場)",cat:"史跡・ゆかりの地",pref:"東京都",addr:"港区台場1-10-1",sta:"お台場海浜公園駅",lat:35.6383,lng:139.7728,desc:"幕末に伊豆・韮山代官の江川英龍(韮山反射炉の建設者)が設計・築造を指揮した品川台場の遺構。国指定史跡。",url:"https://www.kissport.or.jp/spot/tanbou/1905/",type:"spot"},
+{name:"宝戒寺",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"鎌倉市小町3-5-22",sta:"鎌倉駅",lat:35.3218,lng:139.5577,desc:"伊豆(韮山)発祥の北条氏の執権屋敷跡に建ち、北条一族の菩提を弔う寺。「萩の寺」としても有名。",url:"https://hokaiji.com/",type:"spot"},
+{name:"法華堂跡(源頼朝墓・北条義時墓)",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"鎌倉市西御門2丁目",sta:"鎌倉駅",lat:35.3262,lng:139.5603,desc:"伊豆配流から挙兵した源頼朝と、伊豆出身の北条義時の墓所。国指定史跡・日本遺産構成文化財。",url:"https://www.city.kamakura.kanagawa.jp/treasury/hokkedo.html",type:"spot"},
+{name:"覚園寺",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"鎌倉市二階堂421",sta:"鎌倉駅(バス「大塔宮」下車)",lat:35.3346,lng:139.5651,desc:"伊豆出身の北条義時が建立した大倉薬師堂を前身とする寺院。義時ゆかりの薬師堂や黒地蔵で知られる。",url:"https://kamakura894do.com/",type:"spot"},
+{name:"寿福寺(北条政子墓)",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"鎌倉市扇ガ谷1-17-7",sta:"鎌倉駅",lat:35.3253,lng:139.5498,desc:"鎌倉五山第三位。伊豆の豪族・北条時政の娘、北条政子(尼将軍)のやぐら墓がある。",url:"https://www.jalan.net/kankou/spt_14204aj2200023501/",type:"spot"},
+{name:"早雲寺",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"足柄下郡箱根町湯本405",sta:"箱根湯本駅",lat:35.2286,lng:139.1035,desc:"伊豆・韮山城を本拠に伊豆一国を平定した北条早雲(伊勢宗瑞)と小田原北条五代の菩提寺。五代の墓所がある。",url:"https://www.kintouzan-souunji.jp/",type:"spot"},
+{name:"石橋山古戦場・佐奈田霊社",cat:"史跡・ゆかりの地",pref:"神奈川県",addr:"小田原市石橋",sta:"早川駅・根府川駅",lat:35.2210,lng:139.1380,desc:"伊豆で挙兵した源頼朝が1180年に大敗した石橋山合戦の古戦場。伊豆から始まる頼朝旗揚げの史跡。",url:"https://www.city.odawara.kanagawa.jp/kanko/spot/isibasiyama.html",type:"spot"},
+{name:"皇居東御苑(江戸城跡・伊豆石の石垣)",cat:"その他",pref:"東京都",addr:"千代田区千代田1-1",sta:"大手町駅",lat:35.6864,lng:139.7563,desc:"江戸城の石垣には伊豆半島東海岸で切り出された「伊豆石」が大量に使われた。無料公開の東御苑でその石垣を間近に見られる。",url:"https://www.city.ito.shizuoka.jp/gyosei/soshikikarasagasu/shogaigakushuka/bunka_supotsu/2/2/1/2425.html",type:"spot"},
+{name:"伊豆箱根鉄道 大雄山線(大雄山駅)",cat:"その他",pref:"神奈川県",addr:"南足柄市関本(大雄山駅) ※起点は小田原駅",sta:"小田原駅〜大雄山駅",lat:35.3210,lng:139.1080,desc:"伊豆で駿豆線(三島〜修善寺)を運行する伊豆箱根鉄道が神奈川県内で運行する路線。首都圏側で「いずっぱこ」に日常的に乗れる。",url:"https://www.izuhakone.co.jp/railway/",type:"spot"}
+];
+
+
+const CAT_COLORS = {
+  "金目鯛・地魚":"#c2410c",
+  "干物・郷土料理":"#a16207",
+  "わさび":"#4d7c0f",
+  "伊豆諸島(参考)":"#0e7490",
+  "アンテナショップ・物販":"#7c3aed",
+  "史跡・ゆかりの地":"#9f1239",
+  "その他":"#475569"
+};
+const CAT_ICONS = {
+  "金目鯛・地魚":"魚","干物・郷土料理":"干","わさび":"山","伊豆諸島(参考)":"島",
+  "アンテナショップ・物販":"店","史跡・ゆかりの地":"史","その他":"他"
+};
+const PREFS = ["東京都","神奈川県","埼玉県"];
+const CATS = Object.keys(CAT_COLORS);
+
+const state = { prefs:new Set(PREFS), cats:new Set(CATS) };
+
+const map = L.map('map',{zoomControl:true}).setView([35.55,139.55],9);
+let tileFailed=false;
+const tiles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+  maxZoom:19, attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+tiles.on('tileerror',()=>{ if(!tileFailed){tileFailed=true;document.getElementById('tilewarn').style.display='block';} });
+tiles.on('tileload',()=>{ document.getElementById('tilewarn').style.display='none'; });
+
+function gmapUrl(s){ return 'https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(s.name+' '+s.pref+s.addr); }
+
+function makeIcon(cat){
+  const c = CAT_COLORS[cat]||'#475569';
+  return L.divIcon({
+    className:'',
+    html:`<div class="marker-pin" style="background:${c}"><span>${CAT_ICONS[cat]||'・'}</span></div>`,
+    iconSize:[22,22], iconAnchor:[11,22], popupAnchor:[0,-24]
+  });
+}
+
+const markers = SPOTS.map(s=>{
+  const m = L.marker([s.lat,s.lng],{icon:makeIcon(s.cat)});
+  m.bindPopup(`<div class="pop">
+    <span class="badge" style="background:${CAT_COLORS[s.cat]}">${s.cat}</span><span class="badge" style="background:#94a3b8">${s.pref}</span>
+    <h3>${s.name}</h3>
+    <div class="desc">${s.desc}</div>
+    <div class="adr">📍 ${s.pref}${s.addr}<br>🚉 ${s.sta}</div>
+    <div class="links"><a href="${gmapUrl(s)}" target="_blank" rel="noopener">Googleマップ</a><a href="${s.url}" target="_blank" rel="noopener">詳細ページ</a></div>
+  </div>`);
+  s._marker = m;
+  return m;
+});
+
+function chip(label,color,set,key,onChange){
+  const el = document.createElement('div');
+  el.className='chip on';
+  el.innerHTML = color?`<span class="dot" style="background:${color}"></span>${label}`:label;
+  el.style.background = color||'#155e75'; el.style.color='#fff';
+  el.onclick = ()=>{
+    if(set.has(key)){set.delete(key);el.classList.remove('on');el.style.background='#fff';el.style.color='var(--ink)';}
+    else{set.add(key);el.classList.add('on');el.style.background=color||'#155e75';el.style.color='#fff';}
+    onChange();
+  };
+  return el;
+}
+
+function visible(s){ return state.prefs.has(s.pref) && state.cats.has(s.cat); }
+
+function refresh(){
+  let n=0;
+  const list = document.getElementById('list');
+  list.innerHTML='';
+  SPOTS.forEach(s=>{
+    if(visible(s)){
+      n++;
+      if(!map.hasLayer(s._marker)) s._marker.addTo(map);
+      const it = document.createElement('div');
+      it.className='item';
+      it.style.borderLeftColor = CAT_COLORS[s.cat];
+      it.innerHTML = `<h3>${s.name}</h3><div class="meta"><span class="badge" style="background:${CAT_COLORS[s.cat]}">${s.cat}</span>${s.pref}・${s.sta}</div>`;
+      it.onclick = ()=>{ map.flyTo([s.lat,s.lng],14,{duration:.6}); s._marker.openPopup(); };
+      list.appendChild(it);
+    } else {
+      if(map.hasLayer(s._marker)) map.removeLayer(s._marker);
+    }
+  });
+  document.getElementById('count').textContent = `表示中: ${n} / ${SPOTS.length} 件`;
+}
+
+const pc = document.getElementById('prefChips');
+PREFS.forEach(p=>pc.appendChild(chip(p,null,state.prefs,p,refresh)));
+const cc = document.getElementById('catChips');
+CATS.forEach(c=>cc.appendChild(chip(c,CAT_COLORS[c],state.cats,c,refresh)));
+
+refresh();
+map.fitBounds(L.latLngBounds(SPOTS.map(s=>[s.lat,s.lng])).pad(0.06));
+</script>
+</body>
+</html>
